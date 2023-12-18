@@ -10,14 +10,22 @@ The final product contains three parts: the sensor, physical interaction, and da
 # Overview
 In this repository you will find all the coding information needed to recreate our project, or to continue working on it in terms of code. Also find this thingiverse project page for more information about shapefiles, and installation. This repository will display how to setup the sensor. The sensors for this project can be devided into three seperate parts: 
 
-  - Soil Unit: Seeeduino Lotus with a soil moisture sensor, temperature sensor and ESP8285 wifi module. 
-  - Air unit: Adafruit ESP32 S2 feather with accelerometer, battery, LED Ring, solar panel and power management board 
+  - Soil Unit: Seeeduino Lotus with a capacitive soil moisture sensor, temperature sensor and ESP8285 wifi module. 
+  - Air unit: Adafruit ESP32 S2 feather with 3 axis accelerometer, battery, LED Ring, solar panel and power management board 
   - Proximity sensor: ESP32 S2 feather witha proximity sensor
 
 The soil unit is coded with arduino IDE and the air and proximity sensors are programmed with circuitpyhton (using MU editor). As not everything is fully functional yet (see build for more explanation) there might be multiple version of code for the same unit to optimise certain aspects of the functionality over others, depending on the use case. 
 
 # Installation
+To run the code the following steps have to be taken. 
+### Soil unit
+The wifi module is connected through a software serial connection which is practically limited to a Baud rate of 76800, however, the wifi module is set at 115200 baud. This leads to a lot of dirty characters in the serial communication and the accompanying errors to follow. Therefore your have to establish a serial connection to the wifi module (directly connect RX and TX) and and then use AT+CIOBAUD=9600 command to change to your desired baud rate. If that doesnt work, try reflashing the wifi module first. 
 
+Once the wifi module is set correctly, all the parts can be connected. When using thingspeak to upload the code, an account has to be made as well, and you should enter your API key in the code.  
+
+### Air unit
+
+### Proximity sensor
 
 # Run
 
