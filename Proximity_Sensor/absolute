@@ -1,0 +1,70 @@
+import os
+import wifi
+import socketpool
+import time
+import board
+import digitalio
+import adafruit_requests
+import ssl
+import microcontroller
+import neopixel
+import busio
+import adafruit_vcnl4040
+
+# Get WiFi and Adafruit IO details from a settings.toml file
+ssid = os.getenv("CIRCUITPY_WIFI_SSID")
+password = os.getenv("CIRCUITPY_WIFI_PASSWORD")
+aio_username = os.getenv("ADAFRUIT_IO_USERNAME")
+aio_key = os.getenv("ADAFRUIT_IO_KEY")
+aio_feed = "tap-feed"  # Replace with your Adafruit IO feed name
+
+# Connect to Wi-Fi AP
+print(f"Initializing...")
+wifi.radio.connect(ssid, password)
+print("Connected!\n")
+pool = socketpool.SocketPool(wifi.radio)
+print("IP Address: {}".format(wifi.radio.ipv4_address))
+print("Connecting to WiFi '{}' ... ".format(ssid), end="")
+requests = adafruit_requests.Session(pool, ssl.create_default_context())
+
+i2c = board.I2C()  # uses board.SCL and board.SDA
+sensor = adafruit_vcnl4040.VCNL4040(i2c)
+
+# Initial state
+prev_proximity = sensor.proximity
+tap_data = None
+
+while True:
+    proximity = sensor.proximity
+    print(proximity)
+
+    # Check if the state has changed
+    if proximity > 344 and prev_proximity <= 344:
+        tap_data = 'on'
+    elif proximity <= 344 and prev_proximity > 344:
+        tap_data = 'off'
+
+    # Send tap data to Adafruit IO when state changes
+    if tap_data is not None:
+        aio_url = f"https://io.adafruit.com/api/v2/{aio_username}/feeds/{aio_feed}/data"
+        headers = {
+            "X-AIO-KEY": aio_key,
+            "Content-Type": "application/json",
+        }
+        data = {"value": tap_data}
+
+        try:
+            response = requests.post(aio_url, headers=headers, json=data)
+            print(f"Tap data sent to Adafruit IO: {tap_data}")
+        except Exception as e:
+            print(f"Error sending tap data to Adafruit IO: {e}")
+
+        # Reset tap_data to None to prevent repeated uploads
+        tap_data = None
+
+    # Update the previous proximity value for the next iteration
+    prev_proximity = proximity
+
+    # Adjust the delay as needed
+    time.sleep(0.5)
+
