@@ -1,0 +1,198 @@
+import time
+import board
+from adafruit_bme280 import basic as adafruit_bme280
+import adafruit_max1704x
+from adafruit_msa3xx import MSA311
+import ssl
+import alarm
+import digitalio
+import wifi
+import socketpool
+import adafruit_requests
+from adafruit_io.adafruit_io import IO_HTTP, AdafruitIO_RequestError
+import os
+import neopixel
+
+try:
+    from secrets import secrets
+except ImportError:
+    print("WiFi and Adafruit IO credentials are kept in secrets.py")
+    raise
+
+# Duration of sleep in seconds. Default is 600 seconds (10 minutes).
+# Feather will sleep for this duration between sensor readings
+sleep_duration = 1
+
+tsreadAPI = os.getenv("thingspeak_read_api_key")
+
+# Thingspeak API url.
+API_URL = "https://api.thingspeak.com"
+
+# Setup the little red LED
+led = digitalio.DigitalInOut(board.LED)
+led.switch_to_output()
+
+# Set up the BME280 and LC709203 sensors
+i2c = board.I2C()  # uses board.SCL and board.SDA
+msa = MSA311(i2c)
+bme280 = adafruit_bme280.Adafruit_BME280_I2C(i2c)
+monitor = adafruit_max1704x.MAX17048(board.I2C())
+
+# Set up neopixel
+neopixel_pin = board.D5
+pixels = neopixel.NeoPixel(neopixel_pin, 12)
+
+# Collect the sensor data values and format the data
+temperature = "{:.2f}".format(bme280.temperature)
+humidity = "{:.2f}".format(bme280.relative_humidity)
+pressure = "{:.2f}".format(bme280.pressure)
+battery_voltage = "{:.2f}".format(monitor.cell_voltage)
+battery_percent = "{:.1f}".format(monitor.cell_percent)
+
+# Collect acceleration data
+accel_x, accel_y, accel_z = msa.acceleration
+accel_xf = "{:.2f}".format(accel_x)
+accel_yf = "{:.2f}".format(accel_y)
+accel_zf = "{:.2f}".format(accel_z)
+
+def go_to_sleep(sleep_period):
+    # Turn off I2C power by setting it to input
+    i2c_power = digitalio.DigitalInOut(board.I2C_POWER)
+    i2c_power.switch_to_input()
+
+    # Create a an alarm that will trigger sleep_period number of seconds from now.
+    time_alarm = alarm.time.TimeAlarm(monotonic_time=time.monotonic() + sleep_period)
+    # Exit and deep sleep until the alarm wakes us.
+    alarm.exit_and_deep_sleep_until_alarms(time_alarm)
+
+# Fetch the feed of the provided name. If the feed does not exist, create it.
+def setup_feed(feed_name):
+    try:
+        # Get the feed of provided feed_name from Adafruit IO
+        return io.get_feed(feed_name)
+    except AdafruitIO_RequestError:
+        # If no feed of that name exists, create it
+        return io.create_new_feed(feed_name)
+
+# Send the data. Requires a feed name and a value to send.
+def send_io_data(feed, value):
+    return io.send_data(feed["key"], value)
+
+# Read 'tap-feed' from Adafruit IO
+def read_tap_feed(io):
+    try:
+        feed = io.get_feed("tap-feed")
+        data = io.receive_data(feed["key"])
+        return data["value"]
+    except AdafruitIO_RequestError:
+        return None
+
+# Light up neopixel based on tap-feed value and soil moisture value
+def light_up_neopixel_and_color(neopixel_pin, tap_feed_value, soil_moisture_value):
+    # Define color thresholds and corresponding colors
+    color_thresholds = [20, 40, 60, 80, 100]
+    colors = [
+        (255, 0, 0),
+        (255, 160, 0),
+        (255, 255, 0),
+        (164, 194, 48),
+        (0, 255, 0)
+    ]
+
+    # Find the appropriate color based on the soil moisture value
+    for threshold, color in zip(color_thresholds, colors):
+        if soil_moisture_value <= threshold:
+            selected_color = color
+            break
+    else:
+        # If the soil moisture value exceeds all thresholds, use the last color
+        selected_color = colors[-1]
+
+    # Set neopixel color based on the selected color
+    pixels.fill(selected_color if tap_feed_value == 'on' else (0, 0, 0))
+    pixels.show()
+
+# Wi-Fi connections can have issues! This ensures the code will continue to run.
+try:
+    # Connect to Wi-Fi
+    wifi.radio.connect(secrets["ssid"], secrets["password"])
+    print("Connected to {}!".format(secrets["ssid"]))
+    print("IP:", wifi.radio.ipv4_address)
+
+    pool = socketpool.SocketPool(wifi.radio)
+    requests = adafruit_requests.Session(pool, ssl.create_default_context())
+
+    # Reading single value from ThingSpeak for soil moisture
+    print("\nReading from ThingSpeak for Soil Moisture...")
+    get_url = API_URL + f"/channels/2316159/fields/1.json?api_key={tsreadAPI}&results=1"
+    r = requests.get(get_url)
+    data = r.json()
+    soil_moisture = int(data["feeds"][0]["field1"])
+    print("Soil Moisture:", soil_moisture)
+
+    # Reading single value from ThingSpeak for temperature
+    print("\nReading from ThingSpeak for Temperature...")
+    get_url = API_URL + f"/channels/2316159/fields/2.json?api_key={tsreadAPI}&results=1"
+    r = requests.get(get_url)
+    data = r.json()
+    temperature_ts = data["feeds"][0]["field2"]
+    print("Temperature (from ThingSpeak):", temperature_ts)
+
+    # Set your Adafruit IO Username and Key
+    aio_username = secrets["aio_username"]
+    aio_key = secrets["aio_key"]
+
+    # Initialize an Adafruit IO HTTP API object
+    io = IO_HTTP(aio_username, aio_key, requests)
+
+    # Read 'tap-feed' from Adafruit IO
+    tap_feed_value = read_tap_feed(io)
+
+    # Light up neopixel based on tap-feed value and soil moisture value
+    light_up_neopixel_and_color(neopixel_pin, tap_feed_value, soil_moisture)
+
+    # Turn on the LED to indicate data is being sent.
+    led.value = True
+
+    print("Current BME280 temperature: {0} C".format(temperature))
+    print("Current BME280 humidity: {0} %".format(humidity))
+    print("Current BME280 pressure: {0} hPa".format(pressure))
+    print("Current battery voltage: {0} V".format(battery_voltage))
+    print("Current battery percent: {0} %".format(battery_percent))
+    print("Acceleration X: {0} m/s^2".format(accel_xf))
+    print("Acceleration Y: {0} m/s^2".format(accel_yf))
+    print("Acceleration Z: {0} m/s^2".format(accel_zf))
+    print("Temperature (from ThingSpeak):", temperature_ts)
+    print("Soil Moisture (from ThingSpeak):", soil_moisture)
+
+    # Adafruit IO sending can run into issues if the network fails!
+    # This ensures the code will continue to run.
+    try:
+        print("Sending data to AdafruitIO...")
+
+        # Send data to Adafruit IO
+        send_io_data(setup_feed("air-temperature"), temperature)
+        send_io_data(setup_feed("air-humidity"), humidity)
+        send_io_data(setup_feed("air-pressure"), pressure)
+        send_io_data(setup_feed("battery-percent"), battery_percent)
+        send_io_data(setup_feed("xacceleration"), accel_xf)
+        send_io_data(setup_feed("yacceleration"), accel_yf)
+        send_io_data(setup_feed("zacceleration"), accel_zf)
+        send_io_data(setup_feed("soil-temperature"), temperature_ts)
+        send_io_data(setup_feed("soil-moisture"), soil_moisture)
+
+        print("Data sent!")
+        # Turn off the LED to indicate data sending is complete.
+        led.value = False
+
+    # Adafruit IO can fail with multiple errors depending on the situation
+    except Exception as e:  # pylint: disable=broad-except
+        print(e)
+        go_to_sleep(5)
+
+# Wi-Fi connectivity fails with error messages, not specific errors
+except Exception as e:  # pylint: disable=broad-except
+    print(e)
+    go_to_sleep(5)
+
+go_to_sleep(sleep_duration)
