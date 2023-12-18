@@ -37,8 +37,7 @@ In order to run the code, a few more steps have to be taken in the case of the a
 The thingspeak api is called on in a settings file and the wifi SSID and password are stored in a secrets file. Dont forget to create both of these files as well. Secondly remember to install all the relevant libraries by downloading the adafruit circuitpython library packages and copying the libraries that are relevant to the lib folder on the CIRCUITPY drive. 
 
 ### Proximity sensor
-
-For the proximity sensor the 
+For the proximity sensor the both the wifi credentials and the adafruit io credentials have to be placed in a settings.toml file. The libraries can be installed in a similair fashion to the air unit. 
 
 # Build
 For more details about how to recreate this project check out our thingiverse page: 
