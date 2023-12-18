@@ -1,0 +1,100 @@
+#include "WiFiEsp.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+char ssid[] = "---YOURWIFI---";         // your network SSID (name)
+char pass[] = "---YOURPASSWORD---";   // your network password
+
+int sensorPin = A0;           // Analog pin for soil moisture sensor
+int temperaturePin = 7;       // Digital pin for OneWire temperature sensor
+
+OneWire oneWire(temperaturePin);
+DallasTemperature sensors(&oneWire);
+
+// Emulate Serial1 on pins 6/7 if not present
+#ifndef HAVE_HWSERIAL1
+#include "SoftwareSerial.h"
+SoftwareSerial Serial1(2, 3); // RX, TX
+#endif
+
+WiFiEspServer server(80);
+
+int status = WL_IDLE_STATUS;
+
+void setup() {
+  Serial.begin(9600);           // initialize serial for debugging
+  Serial1.begin(9600);          // initialize serial for ESP module
+  sensors.begin();              // initialize temperature sensor
+
+  WiFi.init(&Serial1);          // initialize ESP module
+  // delay
+  if (WiFi.status() == WL_NO_SHIELD) {
+    Serial.println("WiFi shield not present");
+    while (true);
+  }
+
+  while (status != WL_CONNECTED) {
+    Serial.print("Attempting to connect to WPA SSID: ");
+    Serial.println(ssid);
+    status = WiFi.begin(ssid, pass);
+  }
+
+  Serial.println("You're connected to the network");
+  printWifiStatus();
+  server.begin();
+}
+
+void loop() {
+  WiFiEspClient client = server.available();
+
+  // Read soil moisture value
+  int moistureValue = readMoistureValue();
+
+  // Read temperature value
+  float temperatureValue = readTemperatureValue();
+
+  // Send data to ThingSpeak
+  sendDataToThingSpeak(moistureValue, temperatureValue);
+
+  delay(10000); // Add a delay before repeating
+}
+
+void printWifiStatus() {
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  Serial.println();
+  Serial.print("To see this page in action, open a browser to http://");
+  Serial.println(ip);
+  Serial.println();
+}
+
+int readMoistureValue() {
+  int value = analogRead(sensorPin);
+  int moisturePercentage = map(value, 655, 410, 0, 100);
+  return moisturePercentage;
+}
+
+float readTemperatureValue() {
+  sensors.requestTemperatures();
+  float temperatureValue = sensors.getTempCByIndex(0);
+  return temperatureValue;
+}
+
+void sendDataToThingSpeak(int moistureValue, float temperatureValue) {
+  WiFiEspClient client;
+
+  if (client.connect("api.thingspeak.com", 80)) {
+    String url = "/update?api_key=NLNMOWNSPIAUMQIO&field1=" + String(moistureValue) + "&field2=" + String(temperatureValue);
+    client.println("GET " + url + " HTTP/1.1");
+    client.println("Host: api.thingspeak.com");
+    client.println("Connection: close");
+    client.println();
+    delay(100);
+    client.stop();
+  }
+}
