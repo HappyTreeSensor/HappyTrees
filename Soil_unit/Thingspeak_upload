@@ -89,7 +89,7 @@ void sendDataToThingSpeak(int moistureValue, float temperatureValue) {
   WiFiEspClient client;
 
   if (client.connect("api.thingspeak.com", 80)) {
-    String url = "/update?api_key=NLNMOWNSPIAUMQIO&field1=" + String(moistureValue) + "&field2=" + String(temperatureValue);
+    String url = "/update?api_key=YOURAPIKEY&field1=" + String(moistureValue) + "&field2=" + String(temperatureValue);
     client.println("GET " + url + " HTTP/1.1");
     client.println("Host: api.thingspeak.com");
     client.println("Connection: close");
