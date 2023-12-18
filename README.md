@@ -22,13 +22,23 @@ To run the code the following steps have to be taken.
 The wifi module is connected through a software serial connection which is practically limited to a Baud rate of 76800, however, the wifi module is set at 115200 baud. This leads to a lot of dirty characters in the serial communication and the accompanying errors to follow. Therefore your have to establish a serial connection to the wifi module (directly connect RX and TX) and and then use AT+CIOBAUD=9600 command to change to your desired baud rate. If that doesnt work, try reflashing the wifi module first. 
 
 Once the wifi module is set correctly, all the parts can be connected. When using thingspeak to upload the code, an account has to be made as well, and you should enter your API key in the code.  
+Make sure you have installed and selected your board and libraries in the Arduino IDE. 
 
 ### Air unit
+After connecting all the parts of the air unit, the ESP32 feather has to be prepared for use with circuitpython. To do this the following website can be followed: https://learn.adafruit.com/circuitpython-with-esp32-quick-start/installing-circuitpython 
+
+### Proximity sensor
+As the boards for the air unit and proximity sensor are the same the same steps can be followed as described above. 
+
+# Run
+In order to run the code, a few more steps have to be taken in the case of the air unit and proximit sensors. 
+
+### Air unit
+The thingspeak api is called on in a settings file and the wifi SSID and password are stored in a secrets file. Dont forget to create both of these files as well. Secondly remember to install all the relevant libraries by downloading the adafruit circuitpython library packages and copying the libraries that are relevant to the lib folder on the CIRCUITPY drive. 
 
 ### Proximity sensor
 
-# Run
-
+For the proximity sensor the 
 
 # Build
 For more details about how to recreate this project check out our thingiverse page: 
