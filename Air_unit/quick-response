@@ -1,0 +1,74 @@
+import time
+import board
+import neopixel
+from digitalio import DigitalInOut, Direction
+from adafruit_io.adafruit_io import IO_HTTP, AdafruitIO_RequestError
+import adafruit_requests
+import wifi
+import socketpool
+import ssl
+
+try:
+    from secrets import secrets
+except ImportError:
+    print("WiFi and Adafruit IO credentials are kept in secrets.py")
+    raise
+
+# Set up neopixel
+neopixel_pin = board.D5
+pixels = neopixel.NeoPixel(neopixel_pin, 12)
+
+# Set up tap-feed on Adafruit IO
+def setup_tap_feed(io):
+    try:
+        # Get the tap-feed from Adafruit IO
+        return io.get_feed("tap-feed")
+    except AdafruitIO_RequestError:
+        # If tap-feed doesn't exist, create it
+        return io.create_new_feed("tap-feed")
+
+# Read tap-feed from Adafruit IO
+def read_tap_feed(io, tap_feed):
+    try:
+        data = io.receive_data(tap_feed["key"])
+        return data["value"]
+    except AdafruitIO_RequestError:
+        return None
+
+# Connect to Wi-Fi
+wifi.radio.connect(secrets["ssid"], secrets["password"])
+print("Connected to {}!".format(secrets["ssid"]))
+print("IP:", wifi.radio.ipv4_address)
+
+pool = socketpool.SocketPool(wifi.radio)
+requests = adafruit_requests.Session(pool, ssl.create_default_context())
+
+# Set up Adafruit IO
+aio_username = secrets["aio_username"]
+aio_key = secrets["aio_key"]
+io = IO_HTTP(aio_username, aio_key, requests)
+
+# Set up tap-feed
+tap_feed = setup_tap_feed(io)
+
+while True:
+    try:
+        # Read tap-feed value
+        tap_feed_value = read_tap_feed(io, tap_feed)
+
+        # Light up neopixel in red if tap-feed is 'on'
+        if tap_feed_value == 'on':
+            pixels.fill((255, 60, 0)) # Red
+            print('on')
+            time.sleep(5)
+        else:
+            pixels.fill((0, 0, 0))  # Turn off neopixel
+            print('off')
+
+        pixels.show()
+
+        # Wait for a short duration before checking again
+        time.sleep(1)
+
+    except Exception as e:  # Handle exceptions
+        print("Error:", e)
